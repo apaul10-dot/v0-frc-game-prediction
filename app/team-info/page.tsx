@@ -109,51 +109,205 @@ export default function TeamInfoPage() {
 
         {teamData && (
           <div className="space-y-6">
+            {/* Main Team Stats */}
             <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
               <h2 className="text-3xl font-bold text-white mb-2">Team {teamData.teamNumber}</h2>
               <p className="text-xl text-purple-400 mb-6">{teamData.nickname}</p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div>
                   <h3 className="text-gray-400 text-sm mb-2">Average Score</h3>
-                  <p className="text-3xl font-bold text-white">{teamData.avgScore.toFixed(1)}</p>
+                  <p className="text-2xl font-bold text-white">{Number.isFinite(teamData.avgScore) ? teamData.avgScore.toFixed(1) : "N/A"}</p>
                 </div>
                 <div>
                   <h3 className="text-gray-400 text-sm mb-2">Win Rate</h3>
-                  <p className="text-3xl font-bold text-purple-400">{(teamData.winRate * 100).toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-purple-400">{(teamData.winRate * 100).toFixed(1)}%</p>
+                </div>
+                <div>
+                  <h3 className="text-gray-400 text-sm mb-2">OPR</h3>
+                  <p className="text-2xl font-bold text-white">{Number.isFinite(teamData.opr) ? teamData.opr.toFixed(1) : "N/A"}</p>
+                </div>
+                <div>
+                  <h3 className="text-gray-400 text-sm mb-2">DPR</h3>
+                  <p className="text-2xl font-bold text-white">{Number.isFinite(teamData.dpr) ? teamData.dpr.toFixed(1) : "N/A"}</p>
+                </div>
+                <div>
+                  <h3 className="text-gray-400 text-sm mb-2">CCWM</h3>
+                  <p className="text-2xl font-bold text-purple-400">{Number.isFinite(teamData.ccwm) ? teamData.ccwm.toFixed(1) : "N/A"}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div>
+                  <h3 className="text-gray-400 text-sm mb-2">Current Ranking</h3>
+                  <p className="text-xl font-bold text-white">#{teamData.ranking}</p>
                 </div>
                 <div>
                   <h3 className="text-gray-400 text-sm mb-2">Matches Played</h3>
-                  <p className="text-3xl font-bold text-white">{teamData.matchesPlayed}</p>
+                  <p className="text-xl font-bold text-white">{teamData.matchesPlayed}</p>
+                </div>
+                <div>
+                  <h3 className="text-gray-400 text-sm mb-2">Years Active</h3>
+                  <p className="text-xl font-bold text-white">
+                    {teamData.rookie_year ? new Date().getFullYear() - teamData.rookie_year + 1 : "N/A"}
+                  </p>
                 </div>
               </div>
             </Card>
 
+            {/* Team Details */}
             <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
-              <h3 className="text-2xl font-bold text-white mb-4">Team Details</h3>
-              <div className="space-y-3 text-gray-300">
-                <p>
-                  <span className="text-gray-400">Location:</span> {teamData.city}, {teamData.state_prov},{" "}
-                  {teamData.country}
-                </p>
-                <p>
-                  <span className="text-gray-400">Rookie Year:</span> {teamData.rookie_year}
-                </p>
-                {teamData.website && (
-                  <p>
-                    <span className="text-gray-400">Website:</span>{" "}
-                    <a
-                      href={teamData.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-400 hover:underline"
-                    >
-                      {teamData.website}
-                    </a>
+              <h3 className="text-2xl font-bold text-white mb-4">Team Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-300">
+                <div>
+                  <p className="mb-2">
+                    <span className="text-gray-400">Location:</span> {teamData.city || "N/A"}, {teamData.state_prov || "N/A"}, {teamData.country || "N/A"}
                   </p>
-                )}
+                  <p className="mb-2">
+                    <span className="text-gray-400">Rookie Year:</span> {teamData.rookie_year || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  {teamData.website && (
+                    <p className="mb-2">
+                      <span className="text-gray-400">Website:</span>{" "}
+                      <a
+                        href={teamData.website.startsWith("http") ? teamData.website : `https://${teamData.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:underline"
+                      >
+                        {teamData.website}
+                      </a>
+                    </p>
+                  )}
+                </div>
               </div>
             </Card>
+
+            {/* Historical Stats */}
+            {teamData.historicalStats && (
+              <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
+                <h3 className="text-2xl font-bold text-white mb-4">Historical Statistics</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div>
+                    <h4 className="text-gray-400 text-sm mb-1">Total Wins</h4>
+                    <p className="text-xl font-bold text-white">{teamData.historicalStats.totalWins || 0}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-gray-400 text-sm mb-1">Total Losses</h4>
+                    <p className="text-xl font-bold text-white">{teamData.historicalStats.totalLosses || 0}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-gray-400 text-sm mb-1">Championships</h4>
+                    <p className="text-xl font-bold text-purple-400">{teamData.historicalStats.championships || 0}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-gray-400 text-sm mb-1">Events Played</h4>
+                    <p className="text-xl font-bold text-white">{teamData.historicalStats.eventsPlayed || 0}</p>
+                  </div>
+                </div>
+                
+                {teamData.historicalStats.years && teamData.historicalStats.years.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-white mb-3">Performance Over Years</h4>
+                    <div className="space-y-2">
+                      {teamData.historicalStats.years.map((year: number, index: number) => (
+                        <div key={year} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                          <span className="text-white font-semibold">{year}</span>
+                          <div className="flex gap-4 text-sm">
+                            <span className="text-gray-300">
+                              Avg: <span className="text-white font-semibold">
+                                {teamData.historicalStats.avgScores[index]?.toFixed(1) || "N/A"}
+                              </span>
+                            </span>
+                            <span className="text-gray-300">
+                              WR: <span className="text-purple-400 font-semibold">
+                                {(teamData.historicalStats.winRates[index] * 100 || 0).toFixed(1)}%
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Recent Events */}
+            {teamData.recentEvents && teamData.recentEvents.length > 0 && (
+              <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
+                <h3 className="text-2xl font-bold text-white mb-4">Recent Events</h3>
+                <div className="space-y-4">
+                  {teamData.recentEvents.map((event: any) => (
+                    <div key={event.eventKey} className="p-4 bg-gray-800/50 rounded-lg">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="text-lg font-semibold text-white">{event.eventName}</h4>
+                          <p className="text-sm text-gray-400">{event.year}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-400">Ranking</p>
+                          <p className="text-xl font-bold text-purple-400">#{event.ranking}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 mt-3 text-sm">
+                        <div>
+                          <span className="text-gray-400">Wins:</span>{" "}
+                          <span className="text-white font-semibold">{event.wins}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Losses:</span>{" "}
+                          <span className="text-white font-semibold">{event.losses}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Ties:</span>{" "}
+                          <span className="text-white font-semibold">{event.ties}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">OPR:</span>{" "}
+                          <span className="text-purple-400 font-semibold">{event.opr.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Awards */}
+            {teamData.historicalStats?.awards && teamData.historicalStats.awards.length > 0 && (
+              <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
+                <h3 className="text-2xl font-bold text-white mb-4">Recent Awards ({teamData.historicalStats.awards.length} most recent)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {teamData.historicalStats.awards.slice(0, 10).map((award: any, index: number) => {
+                    // Extract event name from event_key (format: YYYYEVENT_CODE)
+                    const eventKeyParts = award.event_key?.match(/(\d{4})(.+)/)
+                    const eventYear = eventKeyParts ? eventKeyParts[1] : award.year
+                    const eventCode = eventKeyParts ? eventKeyParts[2] : award.event_key?.replace(/^\d{4}/, '') || ''
+                    
+                    return (
+                      <div key={index} className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800/70 transition-colors">
+                        <p className="text-white font-semibold text-lg mb-1">{award.name}</p>
+                        <p className="text-sm text-gray-400">
+                          <span className="text-purple-400">{eventYear}</span>
+                          {eventCode && ` • ${eventCode.toUpperCase()}`}
+                        </p>
+                        {award.event_key && (
+                          <p className="text-xs text-gray-500 mt-1">Event: {award.event_key}</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {teamData.historicalStats.awards.length > 10 && (
+                  <p className="text-sm text-gray-400 mt-4">
+                    Showing 10 of {teamData.historicalStats.awards.length} most recent awards
+                  </p>
+                )}
+              </Card>
+            )}
           </div>
         )}
       </main>

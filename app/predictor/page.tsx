@@ -76,11 +76,19 @@ export default function PredictorPage() {
     setLoading(true)
     try {
       const apiKey = localStorage.getItem("tba_api_key")!
+      console.log("[v0] Making prediction for:", { redTeams, blueTeams })
       const result = await makePrediction(
         apiKey,
         redTeams.map((t) => Number.parseInt(t)),
         blueTeams.map((t) => Number.parseInt(t)),
       )
+      console.log("[v0] Prediction result received:", result)
+      
+      // Validate result before setting
+      if (!result || typeof result !== "object") {
+        throw new Error("Invalid prediction result received")
+      }
+      
       setPrediction(result)
 
       const predictions = JSON.parse(localStorage.getItem("predictions") || "[]")
@@ -93,7 +101,9 @@ export default function PredictorPage() {
       localStorage.setItem("predictions", JSON.stringify(predictions))
     } catch (error) {
       console.error("[v0] Prediction error:", error)
-      alert("Error making prediction. Please check team numbers.")
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      alert(`Error making prediction: ${errorMessage}`)
+      setPrediction(null)
     } finally {
       setLoading(false)
     }
@@ -237,24 +247,32 @@ export default function PredictorPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h3 className="text-xl font-semibold text-red-400 mb-2">Red Alliance</h3>
-                <p className="text-4xl font-bold text-white mb-2">{prediction.redScore.toFixed(0)} points</p>
-                <p className="text-lg text-gray-300">Win Probability: {prediction.redWinProbability.toFixed(1)}%</p>
+                <p className="text-4xl font-bold text-white mb-2">
+                  {(Number.isFinite(prediction.redScore) ? prediction.redScore : 0).toFixed(0)} points
+                </p>
+                <p className="text-lg text-gray-300">
+                  Win Probability: {(Number.isFinite(prediction.redWinProbability) ? prediction.redWinProbability : 50).toFixed(1)}%
+                </p>
                 <div className="mt-4 space-y-2">
                   {prediction.redTeamData?.map((team: any) => (
                     <div key={team.teamNumber} className="text-sm text-gray-400">
-                      <span className="font-semibold">{team.teamNumber}</span> - OPR: {team.opr.toFixed(1)}
+                      <span className="font-semibold">{team.teamNumber}</span> - OPR: {(Number.isFinite(team.opr) ? team.opr : 0).toFixed(1)}
                     </div>
                   ))}
                 </div>
               </div>
               <div>
                 <h3 className="text-xl font-semibold text-blue-400 mb-2">Blue Alliance</h3>
-                <p className="text-4xl font-bold text-white mb-2">{prediction.blueScore.toFixed(0)} points</p>
-                <p className="text-lg text-gray-300">Win Probability: {prediction.blueWinProbability.toFixed(1)}%</p>
+                <p className="text-4xl font-bold text-white mb-2">
+                  {(Number.isFinite(prediction.blueScore) ? prediction.blueScore : 0).toFixed(0)} points
+                </p>
+                <p className="text-lg text-gray-300">
+                  Win Probability: {(Number.isFinite(prediction.blueWinProbability) ? prediction.blueWinProbability : 50).toFixed(1)}%
+                </p>
                 <div className="mt-4 space-y-2">
                   {prediction.blueTeamData?.map((team: any) => (
                     <div key={team.teamNumber} className="text-sm text-gray-400">
-                      <span className="font-semibold">{team.teamNumber}</span> - OPR: {team.opr.toFixed(1)}
+                      <span className="font-semibold">{team.teamNumber}</span> - OPR: {(Number.isFinite(team.opr) ? team.opr : 0).toFixed(1)}
                     </div>
                   ))}
                 </div>
@@ -263,11 +281,13 @@ export default function PredictorPage() {
             <div className="mt-6 pt-6 border-t border-gray-700">
               <h3 className="text-2xl font-bold mb-2">
                 <span className={prediction.winner === "red" ? "text-red-400" : "text-blue-400"}>
-                  {prediction.winner.toUpperCase()} ALLIANCE
+                  {(prediction.winner || "red").toUpperCase()} ALLIANCE
                 </span>{" "}
                 WINS
               </h3>
-              <p className="text-gray-300">Confidence: {prediction.confidence.toFixed(1)}%</p>
+              <p className="text-gray-300">
+                Confidence: {(Number.isFinite(prediction.confidence) ? prediction.confidence : 0).toFixed(1)}%
+              </p>
             </div>
           </Card>
         )}
