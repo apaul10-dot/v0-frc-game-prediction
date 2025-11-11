@@ -232,8 +232,8 @@ async function fetchHistoricalTeamData(apiKey: string, teamNumber: number, rooki
   return { stats, recentEvents }
 }
 
-export async function fetchTeamData(apiKey: string, teamNumber: number): Promise<TeamStats> {
-  console.log(`[v0] Fetching data for team ${teamNumber}...`)
+export async function fetchTeamData(apiKey: string, teamNumber: number, season?: number): Promise<TeamStats> {
+  console.log(`[v0] Fetching data for team ${teamNumber} for season ${season || "current"}...`)
   
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("API key is required")
@@ -244,6 +244,8 @@ export async function fetchTeamData(apiKey: string, teamNumber: number): Promise
   }
   
   const headers = { "X-TBA-Auth-Key": apiKey }
+  const currentYear = new Date().getFullYear()
+  const year = season || currentYear
 
   try {
     // Fetch team info
@@ -259,100 +261,107 @@ export async function fetchTeamData(apiKey: string, teamNumber: number): Promise
     }
     const teamInfo = await teamResponse.json()
 
-    // Get current year and fetch team events
-    const currentYear = new Date().getFullYear()
-    const year = currentYear
+    // Fetch all events for the season
     const eventsResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/events/${year}`, { headers })
     const events = eventsResponse.ok ? await eventsResponse.json() : []
 
-    let avgScore = 0
-    let wins = 0
-    let matchesPlayed = 0
-    let opr = 0
-    let dpr = 0
-    let ccwm = 0
-    let ranking = 50
-
-    // If no current year events, try previous year
+    // If no events for this season, try previous year
     const eventYear = events.length > 0 ? year : year - 1
     const fallbackEventsResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/events/${eventYear}`, {
       headers,
     })
-    let finalEvents = fallbackEventsResponse.ok ? await fallbackEventsResponse.json() : []
-    
-    // Combine both years and sort by start_date (most recent first)
-    const allEvents = [...events, ...finalEvents]
-    if (allEvents.length > 0) {
-      // Sort events by start_date descending (most recent first), fallback to event_key
-      finalEvents = allEvents.sort((a: any, b: any) => {
-        const dateA = a.start_date || a.key || ""
-        const dateB = b.start_date || b.key || ""
-        return dateB.localeCompare(dateA)
-      })
-    }
+    const fallbackEvents = fallbackEventsResponse.ok ? await fallbackEventsResponse.json() : []
+    const allEvents = events.length > 0 ? events : fallbackEvents
 
-    if (finalEvents.length > 0) {
-      // Get the most recent event
-      const eventKey = finalEvents[0].key
+    let totalScore = 0
+    let totalMatches = 0
+    let totalWins = 0
+    let totalLosses = 0
+    let totalTies = 0
+    let oprValues: number[] = []
+    let dprValues: number[] = []
+    let ccwmValues: number[] = []
+    let bestRanking = 999
 
-      // Fetch OPR data (Offensive Power Rating)
-      const oprResponse = await fetch(`${TBA_BASE_URL}/event/${eventKey}/oprs`, { headers })
-      if (oprResponse.ok) {
-        const oprData = await oprResponse.json()
-        opr = oprData.oprs?.[`frc${teamNumber}`] || 0
-        dpr = oprData.dprs?.[`frc${teamNumber}`] || 0
-        ccwm = oprData.ccwms?.[`frc${teamNumber}`] || 0
-        console.log(`[v0] Team ${teamNumber} OPR: ${opr.toFixed(2)}, DPR: ${dpr.toFixed(2)}, CCWM: ${ccwm.toFixed(2)}`)
-      }
+    // Aggregate stats across all events in the season
+    for (const event of allEvents) {
+      try {
+        // Fetch OPR data for this event
+        const oprResponse = await fetch(`${TBA_BASE_URL}/event/${event.key}/oprs`, { headers })
+        if (oprResponse.ok) {
+          const oprData = await oprResponse.json()
+          const eventOpr = oprData.oprs?.[`frc${teamNumber}`] || 0
+          const eventDpr = oprData.dprs?.[`frc${teamNumber}`] || 0
+          const eventCcwm = oprData.ccwms?.[`frc${teamNumber}`] || 0
+          
+          if (eventOpr > 0) oprValues.push(eventOpr)
+          if (eventDpr > 0) dprValues.push(eventDpr)
+          if (eventCcwm > 0) ccwmValues.push(eventCcwm)
+        }
 
-      // Fetch matches
-      const matchesResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/event/${eventKey}/matches`, {
-        headers,
-      })
-
-      if (matchesResponse.ok) {
-        const matches = await matchesResponse.json()
-        const qualMatches = matches.filter((m: any) => m.comp_level === "qm")
-        matchesPlayed = qualMatches.length
-
-        let totalScore = 0
-        qualMatches.forEach((match: any) => {
-          const isRed = match.alliances.red.team_keys.includes(`frc${teamNumber}`)
-          const alliance = isRed ? match.alliances.red : match.alliances.blue
-
-          if (alliance.score >= 0) {
-            totalScore += alliance.score
-
-            if (match.winning_alliance === (isRed ? "red" : "blue")) {
-              wins++
-            }
-          }
+        // Fetch matches for this event
+        const matchesResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/event/${event.key}/matches`, {
+          headers,
         })
 
-        avgScore = matchesPlayed > 0 ? totalScore / matchesPlayed : opr || 50
-        console.log(
-          `[v0] Team ${teamNumber} - Matches: ${matchesPlayed}, Avg Score: ${avgScore.toFixed(2)}, Wins: ${wins}`,
-        )
-      }
+        if (matchesResponse.ok) {
+          const matches = await matchesResponse.json()
+          const qualMatches = matches.filter((m: any) => m.comp_level === "qm")
+          
+          qualMatches.forEach((match: any) => {
+            const isRed = match.alliances.red.team_keys.includes(`frc${teamNumber}`)
+            const alliance = isRed ? match.alliances.red : match.alliances.blue
 
-      // Fetch team ranking
-      const statusResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/event/${eventKey}/status`, {
-        headers,
-      })
-      if (statusResponse.ok) {
-        const status = await statusResponse.json()
-        // Get ranking from qual status
-        if (status.qual?.ranking?.rank) {
-          ranking = status.qual.ranking.rank
-        } else if (status.playoff?.status) {
-          // If in playoffs, use alliance pick or playoff rank
-          ranking = status.playoff.pick || 50
-        } else {
-          ranking = 999 // No ranking available
+            if (alliance.score >= 0) {
+              totalScore += alliance.score
+              totalMatches++
+
+              if (match.winning_alliance === (isRed ? "red" : "blue")) {
+                totalWins++
+              } else if (match.winning_alliance === "") {
+                totalTies++
+              } else {
+                totalLosses++
+              }
+            }
+          })
         }
-        console.log(`[v0] Team ${teamNumber} ranking at ${eventKey}: ${ranking}`)
+
+        // Fetch team ranking for this event
+        const statusResponse = await fetch(`${TBA_BASE_URL}/team/frc${teamNumber}/event/${event.key}/status`, {
+          headers,
+        })
+        if (statusResponse.ok) {
+          const status = await statusResponse.json()
+          let eventRanking = 999
+          if (status.qual?.ranking?.rank) {
+            eventRanking = status.qual.ranking.rank
+          } else if (status.playoff?.pick) {
+            eventRanking = status.playoff.pick
+          }
+          if (eventRanking < bestRanking) {
+            bestRanking = eventRanking
+          }
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      } catch (e) {
+        console.error(`[v0] Error processing event ${event.key}:`, e)
       }
     }
+
+    // Calculate averages across all events
+    let avgScore = totalMatches > 0 ? totalScore / totalMatches : 0
+    let opr = oprValues.length > 0 ? oprValues.reduce((a, b) => a + b, 0) / oprValues.length : 0
+    let dpr = dprValues.length > 0 ? dprValues.reduce((a, b) => a + b, 0) / dprValues.length : 0
+    let ccwm = ccwmValues.length > 0 ? ccwmValues.reduce((a, b) => a + b, 0) / ccwmValues.length : 0
+    const winRate = totalMatches > 0 ? totalWins / totalMatches : 0
+    const ranking = bestRanking < 999 ? bestRanking : 50
+
+    console.log(
+      `[v0] Team ${teamNumber} Season ${year} - Events: ${allEvents.length}, Matches: ${totalMatches}, Avg Score: ${avgScore.toFixed(2)}, Wins: ${totalWins}, OPR: ${opr.toFixed(2)}, DPR: ${dpr.toFixed(2)}, CCWM: ${ccwm.toFixed(2)}`,
+    )
 
     // Use OPR as fallback for avgScore if no matches
     if (avgScore === 0 && opr > 0) {
@@ -372,8 +381,8 @@ export async function fetchTeamData(apiKey: string, teamNumber: number): Promise
       teamNumber,
       nickname: teamInfo.nickname || `Team ${teamNumber}`,
       avgScore,
-      winRate: matchesPlayed > 0 ? wins / matchesPlayed : 0.5,
-      matchesPlayed: matchesPlayed || 10,
+      winRate,
+      matchesPlayed: totalMatches || 10,
       ranking,
       opr,
       dpr,
@@ -420,8 +429,10 @@ export async function fetchTeamData(apiKey: string, teamNumber: number): Promise
   }
 }
 
-export async function trainModel(apiKey: string): Promise<void> {
-  console.log("[v0] Starting model training with enhanced features...")
+export async function trainModel(apiKey: string, season?: number): Promise<void> {
+  const currentYear = new Date().getFullYear()
+  const year = season || currentYear
+  console.log(`[v0] Starting model training with enhanced features for season ${year}...`)
 
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("API key is required for training")
@@ -440,7 +451,7 @@ export async function trainModel(apiKey: string): Promise<void> {
   // Fetch data for training teams
   for (const teamNum of trainingTeams) {
     try {
-      const data = await fetchTeamData(apiKey, teamNum)
+      const data = await fetchTeamData(apiKey, teamNum, year)
       trainingData.push(data)
       successCount++
       console.log(`[v0] ✓ Fetched data for team ${teamNum}`)
@@ -544,6 +555,7 @@ export async function trainModel(apiKey: string): Promise<void> {
       accuracy,
       avgError,
       teamsAnalyzed: trainingData.length,
+      season: year,
       trainedAt: new Date().toISOString(),
     }),
   )
@@ -557,45 +569,40 @@ function predictTeamScore(team: TeamStats, weights: ModelWeights): number {
   const dpr = Number.isFinite(team.dpr) ? team.dpr : 0
   const ccwm = Number.isFinite(team.ccwm) ? team.ccwm : 0
   
-  const weightAvgScore = Number.isFinite(weights.avgScore) ? weights.avgScore : 0.3
-  const weightWinRate = Number.isFinite(weights.winRate) ? weights.winRate : 0.15
-  const weightOpr = Number.isFinite(weights.opr) ? weights.opr : 0.6
-  const weightDpr = Number.isFinite(weights.dpr) ? weights.dpr : -0.1
-  const weightCcwm = Number.isFinite(weights.ccwm) ? weights.ccwm : 0.2
-  const bias = Number.isFinite(weights.bias) ? weights.bias : 5
-
-  // Calculate prediction using weighted features
-  // OPR is the most important metric for FRC (represents offensive contribution)
-  let prediction = (
-    weightOpr * opr * 0.8 +  // OPR weighted heavily (scaled to represent contribution)
-    weightAvgScore * avgScore * 0.4 +
-    weightWinRate * winRate * 50 +  // Win rate contributes to reliability
-    weightCcwm * ccwm * 0.6 +  // CCWM includes overall contribution
-    weightDpr * dpr * 0.2 +  // DPR (defense) has negative impact on opponent scoring
-    bias
-  )
-
-  // Ensure prediction is realistic for FRC (team contribution typically 10-80 points)
-  // OPR is already a good baseline, but adjust based on other factors
+  // OPR is the most reliable metric - it directly measures offensive contribution
+  // In FRC, OPR typically ranges from 10-80 for individual teams
+  // For realistic predictions, we primarily use OPR with adjustments from other metrics
+  
   if (opr > 0) {
-    // Use OPR as anchor, adjust with other metrics
-    prediction = opr * 0.7 + prediction * 0.3
-  }
-
-  // Return a valid number, ensure it's in realistic range
-  if (Number.isFinite(prediction) && prediction > 0) {
-    // Clamp to realistic FRC team contribution range (10-90 points per team)
-    return Math.max(10, Math.min(90, prediction))
+    // Use OPR as the primary metric (it's already calibrated for team contribution)
+    // Adjust based on consistency (win rate) and overall performance (CCWM)
+    const consistencyFactor = 1.0 + (winRate - 0.5) * 0.2 // ±10% based on win rate
+    const performanceFactor = 1.0 + Math.min(ccwm / 50, 0.15) // Up to 15% boost for high CCWM
+    
+    let prediction = opr * consistencyFactor * performanceFactor
+    
+    // Factor in average score as a secondary indicator (if significantly different from OPR)
+    if (avgScore > 0 && Math.abs(avgScore - opr) > 5) {
+      // If avgScore differs significantly, it might indicate recent performance changes
+      prediction = prediction * 0.85 + avgScore * 0.15
+    }
+    
+    // Ensure realistic range (OPR is already calibrated, but cap extremes)
+    return Math.max(5, Math.min(100, prediction))
   }
   
-  // Fallback to OPR or avgScore if available, scaled appropriately
-  if (opr > 0) return Math.max(10, Math.min(90, opr * 0.9))
-  if (avgScore > 0) return Math.max(10, Math.min(90, avgScore * 0.4))
-  return 45 // Default reasonable contribution
+  // Fallback if no OPR available - use average score with adjustments
+  if (avgScore > 0) {
+    const adjustedScore = avgScore * (0.7 + winRate * 0.3)
+    return Math.max(10, Math.min(90, adjustedScore))
+  }
+  
+  // Last resort fallback
+  return 40 // Default reasonable contribution for unknown team
 }
 
 // Make match prediction
-export async function makePrediction(apiKey: string, redTeams: number[], blueTeams: number[]): Promise<any> {
+export async function makePrediction(apiKey: string, redTeams: number[], blueTeams: number[], season?: number): Promise<any> {
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("API key is required")
   }
@@ -644,18 +651,21 @@ export async function makePrediction(apiKey: string, redTeams: number[], blueTea
   console.log("[v0] Fetching team data for prediction...")
 
   // Fetch data for all teams with error handling
+  const currentYear = new Date().getFullYear()
+  const year = season || currentYear
+  
   let redData: TeamStats[]
   let blueData: TeamStats[]
   
   try {
-    redData = await Promise.all(redTeams.map((t) => fetchTeamData(apiKey, t)))
+    redData = await Promise.all(redTeams.map((t) => fetchTeamData(apiKey, t, year)))
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Failed to fetch red alliance data"
     throw new Error(`Red alliance: ${errorMsg}`)
   }
   
   try {
-    blueData = await Promise.all(blueTeams.map((t) => fetchTeamData(apiKey, t)))
+    blueData = await Promise.all(blueTeams.map((t) => fetchTeamData(apiKey, t, year)))
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Failed to fetch blue alliance data"
     throw new Error(`Blue alliance: ${errorMsg}`)
@@ -664,34 +674,55 @@ export async function makePrediction(apiKey: string, redTeams: number[], blueTea
   console.log("[v0] Red alliance data:", redData)
   console.log("[v0] Blue alliance data:", blueData)
 
-  // Calculate alliance scores - sum of individual team contributions (more realistic for FRC)
-  // Each team contributes points to the alliance total
-  let redScore = 0
-  let blueScore = 0
+  // Calculate alliance scores using realistic FRC match prediction
+  // OPR represents offensive contribution, but alliance scores need synergy adjustments
   
-  redData.forEach((team) => {
-    // Use OPR as primary metric (Offensive Power Rating represents points contributed)
-    // Combine with avgScore and other factors for more realistic prediction
-    const teamContribution = predictTeamScore(team, weights)
-    // For FRC, alliance scores are additive - sum contributions
-    // Apply realistic scaling: alliance scores typically range 40-200+ points
-    const scaledContribution = Math.max(teamContribution * 0.35 + team.opr * 0.5, team.opr * 0.8)
-    redScore += scaledContribution
-    console.log(`[v0] Team ${team.teamNumber} (Red) contribution: ${scaledContribution.toFixed(2)}`)
-  })
+  // Calculate base alliance OPR (sum of individual OPRs)
+  const redBaseOPR = redData.reduce((sum, team) => sum + (team.opr || 0), 0)
+  const blueBaseOPR = blueData.reduce((sum, team) => sum + (team.opr || 0), 0)
   
-  blueData.forEach((team) => {
-    const teamContribution = predictTeamScore(team, weights)
-    const scaledContribution = Math.max(teamContribution * 0.35 + team.opr * 0.5, team.opr * 0.8)
-    blueScore += scaledContribution
-    console.log(`[v0] Team ${team.teamNumber} (Blue) contribution: ${scaledContribution.toFixed(2)}`)
-  })
-
-  // Ensure scores are in realistic FRC range (typically 40-220 points for alliance scores)
-  // Round to whole numbers for realistic display
-  redScore = Math.max(40, Math.min(220, redScore))
-  blueScore = Math.max(40, Math.min(220, blueScore))
-
+  // Calculate average team metrics for synergy calculation
+  const redAvgWinRate = redData.reduce((sum, team) => sum + (team.winRate || 0), 0) / 3
+  const blueAvgWinRate = blueData.reduce((sum, team) => sum + (team.winRate || 0), 0) / 3
+  
+  const redAvgCCWM = redData.reduce((sum, team) => sum + (team.ccwm || 0), 0) / 3
+  const blueAvgCCWM = blueData.reduce((sum, team) => sum + (team.ccwm || 0), 0) / 3
+  
+  // Calculate synergy factor (teams with similar skill levels work better together)
+  // Also consider consistency (win rate) and overall contribution (CCWM)
+  const redSynergy = 1.0 + (redAvgWinRate * 0.15) + (Math.min(redAvgCCWM, 20) / 100)
+  const blueSynergy = 1.0 + (blueAvgWinRate * 0.15) + (Math.min(blueAvgCCWM, 20) / 100)
+  
+  // Apply synergy to base OPR
+  // In FRC, alliance scores are typically 1.2-1.5x the sum of OPRs due to coordination
+  let redScore = redBaseOPR * redSynergy * 1.25
+  let blueScore = blueBaseOPR * blueSynergy * 1.25
+  
+  // Add variance based on team consistency (more consistent teams = more predictable scores)
+  const redConsistency = redData.reduce((sum, team) => {
+    const consistency = team.winRate * 0.3 + (team.matchesPlayed > 10 ? 0.1 : 0)
+    return sum + consistency
+  }, 0) / 3
+  
+  const blueConsistency = blueData.reduce((sum, team) => {
+    const consistency = team.winRate * 0.3 + (team.matchesPlayed > 10 ? 0.1 : 0)
+    return sum + consistency
+  }, 0) / 3
+  
+  // Adjust scores based on consistency (more consistent = slightly higher expected score)
+  redScore *= (1.0 + redConsistency * 0.1)
+  blueScore *= (1.0 + blueConsistency * 0.1)
+  
+  // Add small random variance (±5%) to simulate match-to-match variability
+  const variance = 0.05
+  redScore *= (1 + (Math.random() - 0.5) * variance * 2)
+  blueScore *= (1 + (Math.random() - 0.5) * variance * 2)
+  
+  // Ensure scores are in realistic FRC range (typically 30-250 points for alliance scores)
+  // Most matches fall in 50-180 range, but high-scoring games can exceed 200
+  redScore = Math.max(30, Math.min(250, redScore))
+  blueScore = Math.max(30, Math.min(250, blueScore))
+  
   // Validate scores are valid numbers
   if (isNaN(redScore) || !isFinite(redScore)) {
     console.warn("[v0] Invalid red score, using fallback")
@@ -703,37 +734,46 @@ export async function makePrediction(apiKey: string, redTeams: number[], blueTea
     blueScore = blueData.reduce((sum, team) => sum + (team.opr || team.avgScore || 50), 0) * 1.2
   }
 
-  console.log(`[v0] Predicted Red Score: ${redScore.toFixed(2)}`)
-  console.log(`[v0] Predicted Blue Score: ${blueScore.toFixed(2)}`)
+  console.log(`[v0] Red Alliance - Base OPR: ${redBaseOPR.toFixed(1)}, Synergy: ${redSynergy.toFixed(2)}, Final Score: ${redScore.toFixed(1)}`)
+  console.log(`[v0] Blue Alliance - Base OPR: ${blueBaseOPR.toFixed(1)}, Synergy: ${blueSynergy.toFixed(2)}, Final Score: ${blueScore.toFixed(1)}`)
 
-  // Calculate win probabilities with adjusted sigmoid for higher confidence
+  // Calculate win probabilities using realistic FRC match dynamics
   const scoreDiff = redScore - blueScore
-  // Use a tighter sigmoid curve to achieve ~90% confidence for clear winners
-  // Reduce the divisor to make the curve steeper (more confidence with smaller differences)
-  const sigmoidDivisor = 8 // Lower = steeper curve = higher confidence
+  const avgScore = (redScore + blueScore) / 2
+  
+  // Use a more realistic sigmoid curve based on actual FRC match data
+  // In FRC, a 10-point difference is significant, 20+ is usually decisive
+  // The divisor scales with average score (higher scoring games have more variance)
+  const sigmoidDivisor = Math.max(8, avgScore * 0.08) // Adaptive based on game scoring level
   const redWinProb = 1 / (1 + Math.exp(-scoreDiff / sigmoidDivisor))
   const blueWinProb = 1 - redWinProb
 
-  // Boost confidence to target ~90% for clear winners
-  // Scale the difference to increase confidence when score difference is meaningful
-  const scoreDiffPercent = Math.abs(scoreDiff) / Math.max(redScore, blueScore, 1) * 100
+  // Calculate confidence based on score difference and team consistency
+  const scoreDiffPercent = Math.abs(scoreDiff) / Math.max(avgScore, 1) * 100
   
-  // Calculate base confidence from win probability difference
+  // Base confidence from win probability difference
   let confidence = Math.abs(redWinProb - blueWinProb) * 100
   
-  // Boost confidence when there's a meaningful score difference (>5% difference)
+  // Factor in team consistency (more consistent teams = more confident predictions)
+  // Reuse the consistency values calculated earlier for score adjustment
+  // Calculate average consistency for confidence boost
+  const avgConsistency = (redConsistency + blueConsistency) / 2
+  
+  // Boost confidence for consistent teams and clear score differences
   if (scoreDiffPercent > 5) {
-    // Scale confidence to approach 90% for larger differences
-    const confidenceBoost = Math.min(0.4, scoreDiffPercent / 100 * 0.5) // Up to 40% boost
-    confidence = Math.min(95, confidence + (confidenceBoost * 100)) // Cap at 95%
+    const consistencyBoost = avgConsistency * 0.15 // Up to 15% boost from consistency
+    const scoreDiffBoost = Math.min(0.3, scoreDiffPercent / 100 * 0.4) // Up to 30% from score diff
+    confidence = Math.min(92, confidence + (consistencyBoost + scoreDiffBoost) * 100)
   }
   
-  // Ensure minimum confidence of 60% for any prediction, target 85-92% for clear winners
-  if (scoreDiffPercent > 3) {
-    confidence = Math.max(confidence, Math.min(92, 60 + (scoreDiffPercent * 2)))
+  // For close matches, confidence should reflect uncertainty
+  if (scoreDiffPercent < 3) {
+    confidence = Math.max(50, Math.min(70, confidence))
+  } else if (scoreDiffPercent < 8) {
+    confidence = Math.max(60, Math.min(80, confidence))
   } else {
-    // For very close matches, confidence should be lower
-    confidence = Math.max(55, Math.min(75, confidence))
+    // Clear winner - higher confidence
+    confidence = Math.max(75, Math.min(92, confidence))
   }
 
   // Ensure all values are valid and realistic

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { fetchTeamData } from "@/lib/ml-model"
@@ -13,6 +14,8 @@ export default function TeamInfoPage() {
   const [teamNumber, setTeamNumber] = useState("")
   const [teamData, setTeamData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const currentYear = new Date().getFullYear()
+  const [season, setSeason] = useState(currentYear.toString())
 
   useEffect(() => {
     const apiKey = localStorage.getItem("tba_api_key")
@@ -27,7 +30,7 @@ export default function TeamInfoPage() {
     setLoading(true)
     try {
       const apiKey = localStorage.getItem("tba_api_key")!
-      const data = await fetchTeamData(apiKey, Number.parseInt(teamNumber))
+      const data = await fetchTeamData(apiKey, Number.parseInt(teamNumber), Number.parseInt(season))
       setTeamData(data)
     } catch (error) {
       console.error("[v0] Team search error:", error)
@@ -39,6 +42,8 @@ export default function TeamInfoPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("tba_api_key")
+    localStorage.removeItem("user_email")
+    localStorage.removeItem("is_authenticated")
     router.push("/")
   }
 
@@ -55,11 +60,6 @@ export default function TeamInfoPage() {
         </div>
 
         <nav className="flex gap-4">
-          <Link href="/strategy">
-            <Button className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-full font-semibold">
-              STRATEGY
-            </Button>
-          </Link>
           <Link href="/predictor">
             <Button className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-full font-semibold">
               AI PREDICTOR
@@ -97,6 +97,18 @@ export default function TeamInfoPage() {
               className="bg-gray-800 border-gray-700 text-white flex-1"
               onKeyPress={(e) => e.key === "Enter" && handleSearch()}
             />
+            <Select value={season} onValueChange={setSeason}>
+              <SelectTrigger className="bg-gray-800 border-gray-700 text-white w-40">
+                <SelectValue placeholder="Season" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                {Array.from({ length: 10 }, (_, i) => currentYear - i).map((year) => (
+                  <SelectItem key={year} value={year.toString()} className="text-white">
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               onClick={handleSearch}
               disabled={loading}
@@ -185,98 +197,7 @@ export default function TeamInfoPage() {
               </div>
             </Card>
 
-            {/* Historical Stats */}
-            {teamData.historicalStats && (
-              <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
-                <h3 className="text-2xl font-bold text-white mb-4">Historical Statistics</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div>
-                    <h4 className="text-gray-400 text-sm mb-1">Total Wins</h4>
-                    <p className="text-xl font-bold text-white">{teamData.historicalStats.totalWins || 0}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-gray-400 text-sm mb-1">Total Losses</h4>
-                    <p className="text-xl font-bold text-white">{teamData.historicalStats.totalLosses || 0}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-gray-400 text-sm mb-1">Championships</h4>
-                    <p className="text-xl font-bold text-purple-400">{teamData.historicalStats.championships || 0}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-gray-400 text-sm mb-1">Events Played</h4>
-                    <p className="text-xl font-bold text-white">{teamData.historicalStats.eventsPlayed || 0}</p>
-                  </div>
-                </div>
-                
-                {teamData.historicalStats.years && teamData.historicalStats.years.length > 0 && (
-                  <div>
-                    <h4 className="text-lg font-semibold text-white mb-3">Performance Over Years</h4>
-                    <div className="space-y-2">
-                      {teamData.historicalStats.years.map((year: number, index: number) => (
-                        <div key={year} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                          <span className="text-white font-semibold">{year}</span>
-                          <div className="flex gap-4 text-sm">
-                            <span className="text-gray-300">
-                              Avg: <span className="text-white font-semibold">
-                                {teamData.historicalStats.avgScores[index]?.toFixed(1) || "N/A"}
-                              </span>
-                            </span>
-                            <span className="text-gray-300">
-                              WR: <span className="text-purple-400 font-semibold">
-                                {(teamData.historicalStats.winRates[index] * 100 || 0).toFixed(1)}%
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* Recent Events */}
-            {teamData.recentEvents && teamData.recentEvents.length > 0 && (
-              <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
-                <h3 className="text-2xl font-bold text-white mb-4">Recent Events</h3>
-                <div className="space-y-4">
-                  {teamData.recentEvents.map((event: any) => (
-                    <div key={event.eventKey} className="p-4 bg-gray-800/50 rounded-lg">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="text-lg font-semibold text-white">{event.eventName}</h4>
-                          <p className="text-sm text-gray-400">{event.year}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-400">Ranking</p>
-                          <p className="text-xl font-bold text-purple-400">#{event.ranking}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-4 gap-4 mt-3 text-sm">
-                        <div>
-                          <span className="text-gray-400">Wins:</span>{" "}
-                          <span className="text-white font-semibold">{event.wins}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400">Losses:</span>{" "}
-                          <span className="text-white font-semibold">{event.losses}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400">Ties:</span>{" "}
-                          <span className="text-white font-semibold">{event.ties}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400">OPR:</span>{" "}
-                          <span className="text-purple-400 font-semibold">{event.opr.toFixed(1)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Awards */}
+            {/* Recent Awards */}
             {teamData.historicalStats?.awards && teamData.historicalStats.awards.length > 0 && (
               <Card className="p-8 bg-gray-900/80 backdrop-blur-sm border-purple-500/30">
                 <h3 className="text-2xl font-bold text-white mb-4">Recent Awards ({teamData.historicalStats.awards.length} most recent)</h3>
@@ -308,6 +229,7 @@ export default function TeamInfoPage() {
                 )}
               </Card>
             )}
+
           </div>
         )}
       </main>

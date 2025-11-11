@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { trainModel, makePrediction } from "@/lib/ml-model"
@@ -16,6 +17,8 @@ export default function PredictorPage() {
   const [blueTeams, setBlueTeams] = useState(["", "", ""])
   const [prediction, setPrediction] = useState<any>(null)
   const [autoTraining, setAutoTraining] = useState(false)
+  const currentYear = new Date().getFullYear()
+  const [season, setSeason] = useState(currentYear.toString())
 
   useEffect(() => {
     const apiKey = localStorage.getItem("tba_api_key")
@@ -26,12 +29,46 @@ export default function PredictorPage() {
 
     const modelData = localStorage.getItem("ml_model")
     if (modelData) {
-      setModelTrained(true)
-      console.log("[v0] Model already trained")
+      try {
+        const parsed = JSON.parse(modelData)
+        // Check if model was trained for the current season
+        if (parsed.season === Number.parseInt(season)) {
+          setModelTrained(true)
+          console.log("[v0] Model already trained for season", season)
+        } else {
+          console.log("[v0] Model trained for different season, retraining...")
+          localStorage.removeItem("ml_model")
+          setAutoTraining(true)
+          trainModel(apiKey, Number.parseInt(season))
+            .then(() => {
+              setModelTrained(true)
+              setAutoTraining(false)
+              console.log("[v0] Auto-training complete!")
+            })
+            .catch((error) => {
+              console.error("[v0] Auto-training failed:", error)
+              setAutoTraining(false)
+            })
+        }
+      } catch (e) {
+        console.error("[v0] Error parsing model data:", e)
+        localStorage.removeItem("ml_model")
+        setAutoTraining(true)
+        trainModel(apiKey, Number.parseInt(season))
+          .then(() => {
+            setModelTrained(true)
+            setAutoTraining(false)
+            console.log("[v0] Auto-training complete!")
+          })
+          .catch((error) => {
+            console.error("[v0] Auto-training failed:", error)
+            setAutoTraining(false)
+          })
+      }
     } else {
       console.log("[v0] No model found, starting auto-training...")
       setAutoTraining(true)
-      trainModel(apiKey)
+      trainModel(apiKey, Number.parseInt(season))
         .then(() => {
           setModelTrained(true)
           setAutoTraining(false)
@@ -42,13 +79,13 @@ export default function PredictorPage() {
           setAutoTraining(false)
         })
     }
-  }, [router])
+  }, [router, season])
 
   const handleTrainModel = async () => {
     setLoading(true)
     try {
       const apiKey = localStorage.getItem("tba_api_key")!
-      await trainModel(apiKey)
+      await trainModel(apiKey, Number.parseInt(season))
       setModelTrained(true)
       alert("Model trained successfully!")
     } catch (error) {
@@ -76,11 +113,12 @@ export default function PredictorPage() {
     setLoading(true)
     try {
       const apiKey = localStorage.getItem("tba_api_key")!
-      console.log("[v0] Making prediction for:", { redTeams, blueTeams })
+      console.log("[v0] Making prediction for:", { redTeams, blueTeams, season })
       const result = await makePrediction(
         apiKey,
         redTeams.map((t) => Number.parseInt(t)),
         blueTeams.map((t) => Number.parseInt(t)),
+        Number.parseInt(season),
       )
       console.log("[v0] Prediction result received:", result)
       
@@ -111,6 +149,8 @@ export default function PredictorPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("tba_api_key")
+    localStorage.removeItem("user_email")
+    localStorage.removeItem("is_authenticated")
     router.push("/")
   }
 
@@ -127,11 +167,6 @@ export default function PredictorPage() {
         </div>
 
         <nav className="flex gap-4">
-          <Link href="/strategy">
-            <Button className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-full font-semibold">
-              STRATEGY
-            </Button>
-          </Link>
           <Link href="/predictor">
             <Button className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-6 rounded-full font-semibold">
               AI PREDICTOR
@@ -157,7 +192,28 @@ export default function PredictorPage() {
       </header>
 
       <main className="relative z-10 p-8 max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8">AI Predictor</h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-bold text-white">AI Predictor</h1>
+          <div className="flex items-center gap-4">
+            <label className="text-white text-sm font-semibold">Season:</label>
+            <Select value={season} onValueChange={(value) => {
+              setSeason(value)
+              setModelTrained(false) // Model needs retraining for new season
+              localStorage.removeItem("ml_model")
+            }}>
+              <SelectTrigger className="bg-gray-800 border-gray-700 text-white w-32">
+                <SelectValue placeholder="Season" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                {Array.from({ length: 10 }, (_, i) => currentYear - i).map((year) => (
+                  <SelectItem key={year} value={year.toString()} className="text-white">
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         {autoTraining && (
           <Card className="p-6 bg-gray-900/80 backdrop-blur-sm border-purple-500/30 mb-8">
